@@ -405,7 +405,6 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket){
                 break;
 
 
-
             case KERNEL_TO_MEMORY_REQUEST_TO_REMOVE_PROCESS: {
                 // REMOVE_PROC: extraer pid, liberar marcos y responder OK/FAIL
                 // Extraer el PID
@@ -468,40 +467,6 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket){
     close(connectionSocket);
     log_info(memoriaLog, "Hilo Kernel→Memoria finalizado.");
     return NULL;
-}
-
-
-
-// Devuelve DF para una dirección lógica DL
-int translateAddress(t_memoriaProcess* proc, int dl) {
-    int pageSize           = getMemoriaConfig()->TAM_PAGINA;
-    int levels             = proc->levels;
-    int entriesPerTable    = proc->entriesPerTable;
-
-    int pageNumber = dl / pageSize;
-    int offset     = dl % pageSize;
-
-    void* current = proc->pageTables[0];
-    for (int lvl = 0; lvl < levels; lvl++) {
-        int divisor = pow(entriesPerTable, levels - lvl - 1);
-        int index   = pageNumber / divisor;
-        pageNumber  %= divisor;
-
-        if (lvl == levels - 1) {
-            // Último nivel: current es un int*
-            int frame = ((int*)current)[index];
-            return frame * pageSize + offset;
-        } else {
-            // Desciende a la siguiente subtabla
-            current = ((void**)current)[index];
-            if (!current) {
-                log_error(memoriaLog,
-                  "PF: lvl=%d índice=%d ausente (DL=%d)", lvl, index, dl);
-                return -1;  // page fault
-            }
-        }
-    }
-    return -1;  // nunca debería llegar
 }
 
 
@@ -588,8 +553,8 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
 
     // Contar marcos libres en el bitmap 
     int freeCount = 0;
-    for (int i = 0; i < totalFrames; i++) {
-        if (!bitarray_test_bit(frameBitmap, i)) {
+    for (int i = 0; i < totalFrames; i++) {         // bitarray_test_bit función de la so-commons-library va al frameBitmap y dice  1 si el bit está 1.
+        if (!bitarray_test_bit(frameBitmap, i)) {   // frameBitmap bit array frame libre/ocupado
             freeCount++;
         }
     }
@@ -700,8 +665,6 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
     free(fullPath);
 
 
-
-    //char* fileContent = read_file(pseudocodeFileName);
     if (!fileContent) {
         log_error(memoriaLog,
                   "No se pudo leer '%s' para pid=%d",

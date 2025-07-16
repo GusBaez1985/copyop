@@ -38,6 +38,10 @@ void* serverDispatchThreadForKernel(void* voidPointerConnectionSocket){
                 contexto.pid = extractIntElementFromList(list, 0);
                 contexto.program_counter = extractIntElementFromList (list, 1);
 
+                // Actualizar la variable global con el PID del proceso en ejecución, para que lo vean todos
+                pid_actual = contexto.pid; 
+
+
                 // Log para ver que lo recibimos bien
                 log_info(cpuLog, "Recibido contexto - PID: %d - PC: %d", contexto.pid, contexto.program_counter);
 
@@ -45,25 +49,6 @@ void* serverDispatchThreadForKernel(void* voidPointerConnectionSocket){
 
                 break;
 
-
-
-            case KERNEL_TO_CPU_INIT_PROCESS: {
-                t_list* data = packageToList(package);
-                // 1) Guardamos PID globalmente
-                pid_actual = extractIntElementFromList(data, 0);
-                // 2) Leemos el nombre del script
-                char* pseudocodeFile = extractStringElementFromList(data, 1);
-                // 3) Leemos el tamaño
-                uint32_t sizeBytes = extractIntElementFromList(data, 2);
-                list_destroy_and_destroy_elements(data, free);
-
-                log_info(cpuLog,        "INIT_PROC desde Kernel: PID=%u, archivo=%s, size=%u",
-                        pid_actual, pseudocodeFile, sizeBytes);
-
-                // TODO: guarda pseudocodeFile y sizeBytes en tu PCB local
-                free(pseudocodeFile);
-                break;
-            }
 
             case DO_NOTHING:
                 log_info(cpuLog, "RECIBIDO MENSAJE VACIO DESDE KERNEL.");
@@ -178,27 +163,6 @@ void* serverThreadForMemoria(void* voidPointerConnectionSocket){
                 
                 break;
             }
-
-            //! esto ya no iria por la implementación síncrona en cpuClient.c, espera la respuesta de memoria
-            // la función memory_read en cpuClient.c ahora hace el send y se bloquea con receivePackage dentro de la misma función.
-            /*
-            case MEMORIA_TO_CPU_READ_RESPONSE: {
-                // 1) Convertimos el paquete en lista (packageToList ya malloc()ea cada elemento)
-                t_list* elems = packageToList(package);
-                if (!elems || list_is_empty(elems)) {
-                    log_error(cpuLog, "READ_RESPONSE sin datos");
-                } else {
-                    // 2) El primer elemento es el buffer de 'last_read_size' bytes
-                    // void* buffer = list_get(elems, 0);
-                    log_info(cpuLog, "READ_RESPONSE recibido: %u bytes", last_read_size);
-                    // TODO: procesar 'buffer' (copiar a registros, imprimir, etc.)
-                }
-                // 3) Liberar
-                list_destroy_and_destroy_elements(elems, free);
-                break;
-            }*/
-
-
 
             case DO_NOTHING:
                 log_info(cpuLog, "RECIBIDO MENSAJE VACIO DESDE KERNEL.");
