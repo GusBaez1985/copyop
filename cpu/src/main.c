@@ -6,7 +6,9 @@ uint32_t tamanioPagina;
 uint32_t entradasPorTabla;
 uint32_t cantidadNiveles;
 uint32_t last_read_size = 0;
-
+uint32_t pc_actual;
+bool ciclo_de_instruccion_activo;
+sem_t sem_ciclo_instruccion;
 
 int main(int argc, char* argv[]){
 
@@ -30,6 +32,9 @@ int main(int argc, char* argv[]){
     // Hilo para solicitar conexión con Memoria: solo para Distpatch
     createThreadForRequestingConnection(cpuLog, getCpuConfig()->IP_MEMORIA, getCpuConfig()->PUERTO_MEMORIA, &handshakeFromDispatchToMemoria, &serverThreadForMemoria);
 
+    // Inicializamos el semáforo en 0 para que el hilo que haga wait() se bloquee
+    sem_init(&sem_ciclo_instruccion, 0, 0); 
+    
     mmu_init();
 
     // Se pide que se ingrese un caracter para que no termine abruptamente, y se destruyen el logger y config:
