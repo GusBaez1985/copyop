@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "bitarray.h": "c",
+        "dictionary.h": "c",
+        "mmu.h": "c",
+        "client.h": "c"
+    }
+}
