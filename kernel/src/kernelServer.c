@@ -128,7 +128,9 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
         }
 
         list = packageToList(package);
-
+        // !PRUEBA DE ESCRITORIO
+        log_info(kernelLog, "CPU (ID %d) me notifica syscall: %d", cpuId, package->operationCode);
+        
         switch(package->operationCode){
             case CPU_DISPATCH_TO_KERNEL_EXIT:
                 pthread_t syscallExitThread;

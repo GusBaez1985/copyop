@@ -2,9 +2,6 @@
 #include "memoriaServer.h"
 
 
-
-
-
 int finishServer;
 int listeningSocket;
 
@@ -118,8 +115,10 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
         }
 
         list = packageToList(package);
-
+        // ! Prueba de escritorio
+        log_info(memoriaLog, "CPU me pide operación: %d", package->operationCode);
         switch(package->operationCode){
+            
             case CPU_DISPATCH_TO_MEMORIA_TEST:
                 char* message = extractMessageFromPackage(package);
                 log_info(memoriaLog, "%s", message);
@@ -135,6 +134,9 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 int entry_index = extractIntElementFromList(data, 3);
                 list_destroy_and_destroy_elements(data, free);
 
+                // ! Prueba de escritorio
+                log_info(memoriaLog, "PID %d: Buscando entrada de TP Nivel %d, Índice %d", pid, level, entry_index);
+                
                 // Buscamos el proceso en nuestro diccionario de procesos activos.
                 char* pidKey = string_itoa(pid);
                 t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
@@ -190,8 +192,7 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 free(pidKey);
 
                 // --- Obtener la instrucción real ---
-                // Antes (mock) hacíamos:
-                //   char* inst = string_from_format("NOOP");
+
                 // Ahora: buscamos en proc->instructions[programCounter]
                 char* inst;
                 if (proc != NULL && programCounter < proc->instructionCount) {
@@ -224,7 +225,11 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 int physical_address = extractIntElementFromList(params, 1);
                 int size = extractIntElementFromList(params, 2);
                 list_destroy_and_destroy_elements(params, free);
-
+                
+                // ! Prueba de escritorio
+                log_info(memoriaLog, "PID %d: Leyendo %d bytes de la dirección física %d", pid, size, physical_address);
+                
+                
                 log_info(memoriaLog, "PID: %d - Acción: LEER - Dir. Física: %d - Tamaño: %d", pid, physical_address, size);
 
                 // Crear un buffer temporal para leer desde nuestra memoria principal
@@ -248,6 +253,9 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 void* data_to_write = malloc(size);
                 memcpy(data_to_write, list_get(params, 3), size); 
                 list_destroy_and_destroy_elements(params, free);
+
+                //! Prueba de escritorio
+                log_info(memoriaLog, "PID %d: Escribiendo en la dirección física %d", pid, physical_address);
 
                 log_info(memoriaLog, "PID: %d - Acción: ESCRIBIR - Dir. Física: %d - Tamaño: %d", pid, physical_address, size);
 
@@ -410,7 +418,8 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket){
                 // Extraer el PID
                 int pid = extractIntElementFromList(list, 0);
                 log_info(memoriaLog, "## (%d) - REMOVE_PROC recibido", pid);
-
+                // ! Prueba de escritorio
+                log_info(memoriaLog, "Kernel pide eliminar al PID %d. Liberando marcos...", pid);
                 // Construir clave para el diccionario
                 char* pidKey = string_itoa(pid);
 

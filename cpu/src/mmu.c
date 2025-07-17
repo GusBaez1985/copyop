@@ -100,23 +100,40 @@ tMmuStatus mmu_write(uint32_t logicalAddress, uint32_t size, void* buffer_in) {
     
     while(bytes_written < size) {
         uint32_t current_logicalAddress = logicalAddress + bytes_written;
-        uint32_t page_number = current_logicalAddress / page_size;
+        //uint32_t page_number = current_logicalAddress / page_size;
         uint32_t offset = current_logicalAddress % page_size;
         uint32_t size_to_write_in_page = page_size - offset;
+
+
+
 
         if(size_to_write_in_page > (size - bytes_written)) {
             size_to_write_in_page = size - bytes_written;
         }
 
-        uint32_t frame_number;
-        // Para escribir, siempre necesitamos la dirección física.
-        if (translate_address( 1 /* pcb_actual->pid */, page_number, &frame_number) != MMU_OK) {
+        // ! Avisar
+        // se modifica por el cambio de firma de translate_address que ahora entrega llave en mano DF, no frame
+        
+        // uint32_t frame_number;
+        // // Para escribir, siempre necesitamos la dirección física.
+        // if (translate_address( 1 /* pcb_actual->pid */, page_number, &frame_number) != MMU_OK) {
+        //     return MMU_SEG_FAULT;
+        // }
+
+        // uint32_t physical_address = frame_number * page_size + offset;
+
+        
+        // 1. Declaramos la variable para la dirección física.
+        uint32_t physical_address;
+        
+        // 2. Llamamos a translate_address con la firma correcta:
+        //    Le pasamos la dirección LÓGICA completa y esperamos la FÍSICA de vuelta.
+        if (translate_address(pid_actual, current_logicalAddress, &physical_address) != MMU_OK) {
+            log_error(cpuLog, "PID: %u - SEGMENTATION FAULT al intentar escribir en la dirección lógica %u", pid_actual, current_logicalAddress);
+            // TODO: Enviar paquete a Kernel con motivo de SEG_FAULT.
             return MMU_SEG_FAULT;
         }
 
-        uint32_t physical_address = frame_number * page_size + offset;
-
-        
         // Enviar la escritura a memoria (Write-Through)
         if (memory_write(physical_address, size_to_write_in_page, buffer_in + bytes_written) != 0) { // Definir luego la función en cpuClient.c
             log_error(cpuLog, "PID: %u - Error al escribir en memoria física en la dirección %u",  1 /* pcb_actual->pid */, physical_address);
@@ -124,6 +141,7 @@ tMmuStatus mmu_write(uint32_t logicalAddress, uint32_t size, void* buffer_in) {
         }
         
         // Invalidar la entrada en la caché de páginas, ya que su contenido ahora es obsoleto.
+        uint32_t page_number = current_logicalAddress / page_size;
         page_cache_invalidate( 1 /* pcb_actual->pid */, page_number);
         
         log_info(cpuLog, "PID: %u - Escritura en Memoria - Dir. Lógica: %u -> Dir. Física: %u, Tamaño: %u",
@@ -183,15 +201,20 @@ void mmu_destroy() {
 
 tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* physical_address) {
 
+    // ! Prueba de escritorio
+    log_info(cpuLog, "Iniciando traducción para dirección lógica: %u", logical_address);
+
     // 1. Calcular nro de página y desplazamiento
-    uint32_t page_number = floor(logical_address / tamanioPagina);
-    uint32_t offset = logical_address % tamanioPagina;
+    uint32_t page_number = floor(logical_address / tamanioPagina); // menor parte entera
+    uint32_t offset = logical_address % tamanioPagina; //resto
 
     // 2. Buscar en la TLB
     uint32_t frame_number;
     if (tlb_lookup(pid, page_number, &frame_number)) {
         // TLB Hit: Ya tenemos el marco, calculamos la dirección física y terminamos.
         *physical_address = frame_number * tamanioPagina + offset;
+
+        log_info(cpuLog, "Traducción exitosa. Dirección física calculada: %u", *physical_address);
         return MMU_OK;
     }
 
@@ -235,33 +258,11 @@ tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* p
     // 5. Calcular la dirección física final
     *physical_address = frame_number * tamanioPagina + offset;
 
+    log_info(cpuLog, "Traducción exitosa. Dirección física calculada: %u", *physical_address);
+
     return MMU_OK;
 }
 
-
-
-// tMmuStatus translate_address(uint32_t pid, uint32_t page_number, uint32_t* frame_number) {
-
-//     // Se debería buscar primero en la caché???
-
-//     // 1. Buscar en la TLB
-//     if (tlb_lookup(pid, page_number, frame_number)) {
-//         return MMU_OK; // TLB Hit
-//     }
-
-//     // 2. TLB Miss: Consultar a Memoria
-//     if (memory_get_frame(pid, page_number, frame_number) != 0) { // Definir luego la función en cpuClient.c
-//         log_error(cpuLog, "PID: %u - SEG_FAULT - Página: %u no encontrada en tabla de páginas.", pid, page_number);
-//         return MMU_SEG_FAULT;
-//     }
-    
-//     log_info(cpuLog, "PID: %u - Acceso a Tabla de Páginas - Página: %u -> Marco: %u", pid, page_number, *frame_number);
-
-//     // 3. Agregar la nueva traducción a la TLB
-//     tlb_add(pid, page_number, *frame_number);
-    
-//     return MMU_OK;
-// }
 
 tMmuStatus fetch_page_from_memory(uint32_t pid, uint32_t page_number, uint32_t frame_number, void** content) {
     uint32_t page_size = tamanioPagina;
@@ -298,9 +299,19 @@ bool tlb_lookup(uint32_t pid, uint32_t page, uint32_t* frame) {
         log_info(cpuLog, "PID: %u - TLB HIT - Página: %u -> Marco: %u", pid, page, *frame);
         
         if (strcmp(cpuConfig->REEMPLAZO_TLB, "LRU") == 0) {
+
+            // --- CORRECCIÓN ---
+            // Le pasamos directamente el puntero a la función de condición.
+            list_remove_element(tlb_as_list, hit); // Asumimos que queremos liberar la entrada vieja si la encontramos
+            list_add(tlb_as_list, hit);// Y agregamos la nueva (o la misma, si no liberamos)
+            
+            
+            // --- FIN DE CORRECCIÓN ---
+
+            //!Consultar Supuesta correc  necesita que le pases el puntero a la función de condición, no (void*)find_condition
             // Re-agregamos el elemento al final para marcarlo como el más recientemente usado.
-            list_remove_by_condition(tlb_as_list, (void*)find_condition);
-            list_add(tlb_as_list, hit);
+            //list_remove_by_condition(tlb_as_list, (void*)find_condition);
+            // list_add(tlb_as_list, hit);
         }
         return true;
     }

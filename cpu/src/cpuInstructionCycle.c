@@ -52,60 +52,43 @@ void requestFreeMemoryMock() {
         destroyPackage(response);  
 }
 
-tDecodedInstruction* decode(char* instruction) {
 
+tDecodedInstruction* decode(char* instruction_string) {
     tDecodedInstruction* decodedInstruction = malloc(sizeof(tDecodedInstruction));
 
-    switch (mapInstruction(instruction)){
-        case NOOP:
-            decodedInstruction->operation = NOOP;
-            decodedInstruction->total_params = 0;
-            break;
-        case WRITE:
-            decodedInstruction->operation = WRITE;
-            decodedInstruction->params[0] = "Test"; //list_remove(list_instruction, 0); // HACER LOGICA DE RECIBIR LA INSTRUCCION EN LISTA
-            decodedInstruction->params[1] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->total_params = 2;
-            break;
-        case READ:
-            decodedInstruction->operation = READ; 
-            decodedInstruction->params[0] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->params[1] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->total_params = 2;
-            break;
-        case GOTO:
-            decodedInstruction->operation = GOTO;
-            decodedInstruction->params[0] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->total_params = 1;
-            break;
-        case IO_INST:
-            decodedInstruction->operation = IO_INST;
-            decodedInstruction->params[0] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->params[1] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->total_params = 2;
-            break;
-        case INIT_PROC:
-            decodedInstruction->operation = INIT_PROC;
-            decodedInstruction->params[0] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->params[1] = "Test"; //list_remove(list_instruction, 0);
-            decodedInstruction->total_params = 2;
-            break;
-        case DUMP_MEMORY:
-            decodedInstruction->operation = DUMP_MEMORY;
-            decodedInstruction->total_params = 0;
-            break;
-        case EXIT_INST:
-            decodedInstruction->operation = EXIT_INST;
-            decodedInstruction->total_params = 0;
-            break;
-        default:
-            decodedInstruction->operation = UNKNOWN; // puede haber heap loss
-            break;
+    //! Prueba de escritorio 
+    log_info(cpuLog, "Recibida instrucción para decodificar: '%s'", instruction_string);
+
+    char** parts = string_split(instruction_string, " "); // Dividimos la instrucción por espacios
+    
+    //!1 prueba de escritorio
+    log_info(cpuLog, "Instrucción parseada: Operación='%s', Parámetro 1='%s'", parts[0], parts[1]); 
+
+    char* operation_str = parts[0]; // La primera parte es siempre la operación
+
+    decodedInstruction->operation = mapInstruction(operation_str); // Mapeamos el string a nuestro enum
+    decodedInstruction->total_params = 0;
+
+    // Copiamos los parámetros (si los hay)
+    int i = 1;
+    while (parts[i] != NULL) {
+        decodedInstruction->params[decodedInstruction->total_params] = strdup(parts[i]);
+        decodedInstruction->total_params++;
+        i++;
     }
 
-    log_info(cpuLog, "La instrucción decodificada es: %d", decodedInstruction->operation);
+    // Liberamos la memoria usada por string_split
+    // OJO: No libera los punteros que copiamos, solo el array de punteros.
+    for (int j = 0; parts[j] != NULL; j++) {
+        free(parts[j]);
+    }
+    free(parts);
+
+    log_info(cpuLog, "Instrucción decodificada: %d con %d parámetros", decodedInstruction->operation, decodedInstruction->total_params);
     return decodedInstruction;
 }
+
+
 
 void execute(tDecodedInstruction* decodedInstruction) {
 
@@ -116,6 +99,8 @@ void execute(tDecodedInstruction* decodedInstruction) {
             log_info(cpuLog, "TERMINA NOOP");
             break;
         case READ: {
+            //! Prueba de escritorio
+            log_info(cpuLog, "Ejecutando: READ. Parámetros: %s, %s", decodedInstruction->params[0], decodedInstruction->params[1]);
             // 1. Obtenemos la dirección lógica y el tamaño de la instrucción
             uint32_t logical_address = atoi(decodedInstruction->params[0]);
             uint32_t size_to_read = atoi(decodedInstruction->params[1]);
@@ -146,6 +131,8 @@ void execute(tDecodedInstruction* decodedInstruction) {
         }
 
         case WRITE: {
+            //! Prueba de escritorio
+            log_info(cpuLog, "Ejecutando: WRITE. Parámetros: %s, %s", decodedInstruction->params[0], decodedInstruction->params[1]);
             // Obtenemos los parámetros de la instrucción decodificada.
             uint32_t logical_address = atoi(decodedInstruction->params[0]);
             char* data_to_write = decodedInstruction->params[1];
