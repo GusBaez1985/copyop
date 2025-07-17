@@ -161,113 +161,48 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 break;
             }
 
-            /*
+
             case CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY: {
-                log_info(memoriaLog, "Ingreso a CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY");
-                // 1. Extraer los parámetros de la petición de la CPU.
-                t_list* data = packageToList(package);
-                int pid = extractIntElementFromList(data, 0);
-                // El parámetro 1 (table_addr) no se usa en nuestra lógica, pero lo extraemos para limpiar la lista.
-                extractIntElementFromList(data, 1); 
-                int level = extractIntElementFromList(data, 2);
-                int entry_index = extractIntElementFromList(data, 3);
-                list_destroy_and_destroy_elements(data, free);
-
-                log_info(memoriaLog, "PID: %d -> Petición de entrada de TP [Nivel: %d, Entrada: %d]", pid, level, entry_index);
-
-                // 2. Buscar el proceso en nuestro diccionario de procesos activos.
-                char* pidKey = string_itoa(pid);
-                t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
-                free(pidKey);
-
-                int entry_content = -1; // Valor por defecto en caso de error.
-
-                // 3. --- DEFENSA Y DEPURACIÓN: Validar que el proceso y las tablas existan ---
-                if (!proc) {
-                    log_error(memoriaLog, "¡ERROR CRÍTICO! PID: %d no encontrado en memoria para búsqueda de TP.", pid);
-                } 
-                else {
-                    // La tabla de nivel 1 está en proc->pageTables[0], la de nivel 2 en proc->pageTables[1], etc.
-                    // Por lo tanto, para el 'level' que nos llega (1-based), accedemos al índice 'level - 1'.
-                    if (level > proc->levels || proc->pageTables[level - 1] == NULL) {
-                         log_error(memoriaLog, "¡ERROR CRÍTICO! Intento de acceso a tabla de nivel %d para PID %d, pero no existe o es nula.", level, pid);
-                    } else {
-                        void* current_table = proc->pageTables[level - 1];
-                        log_info(memoriaLog, "PID: %d -> Accediendo a la tabla en la dirección de memoria: %p", pid, current_table);
-
-                        // 4. --- LÓGICA DE ACCESO CORREGIDA ---
-                        // Si es el último nivel, la tabla contiene los números de marco (int).
-                        if (level == proc->levels) {
-                            entry_content = ((int*)current_table)[entry_index];
-                        } else {
-                            // Si no, contiene punteros a la siguiente tabla (void*).
-                            // Obtenemos el puntero y lo casteamos a un entero para poder enviarlo.
-                            void* next_table_ptr = ((void**)current_table)[entry_index];
-                            entry_content = (int)(uintptr_t)next_table_ptr;
-                        }
-                    }
-                }
-
-                // 5. Logueamos la operación y respondemos a la CPU.
-                log_info(memoriaLog, "PID: %d -> Respuesta de TP [Nivel: %d, Entrada: %d] -> Contenido: %d", pid, level, entry_index, entry_content);
-
-                tPackage* response = createPackage(MEMORIA_TO_CPU_PAGE_TABLE_ENTRY);
-                addToPackage(response, &entry_content, sizeof(int));
-                sendPackage(response, connectionSocket);
+                list = packageToList(package);
+                int pid = extractIntElementFromList(list, 0);
+                uint64_t table_addr_from_cpu = extractUint64ElementFromList(list, 1); // Usamos la nueva función
+                int level_requested = extractIntElementFromList(list, 2);
+                int entry_index = extractIntElementFromList(list, 3);
                 
-                break;
-            }
-            */
-
-
-
-            case CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY: {
-                t_list* data = packageToList(package);
-                int pid = extractIntElementFromList(data, 0);
-                uint32_t table_addr_from_cpu = (uint32_t)extractIntElementFromList(data, 1);
-                int level_requested = extractIntElementFromList(data, 2);
-                int entry_index = extractIntElementFromList(data, 3);
-                list_destroy_and_destroy_elements(data, free);
-
-                log_info(memoriaLog, "PID: %d -> Petición de TP [Nivel: %d, Entrada: %d, Addr de Tabla: %u]", pid, level_requested, entry_index, table_addr_from_cpu);
+                log_info(memoriaLog, "PID: %d -> Petición de TP [Nivel: %d, Entrada: %d, Addr de Tabla: %lu]", pid, level_requested, entry_index, (unsigned long)table_addr_from_cpu);
 
                 char* pidKey = string_itoa(pid);
                 t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
                 free(pidKey);
 
-                int entry_content = -1;
+                uint64_t content_to_send = -1; // Usamos uint64_t para la respuesta
 
                 if (!proc) {
                     log_error(memoriaLog, "¡ERROR CRÍTICO! PID: %d no encontrado.", pid);
                 } else {
                     void* table_to_read;
-                    // --- LÓGICA DE LECTURA CORREGIDA ---
-                    // Si es el Nivel 1, la tabla a leer es la tabla raíz del proceso.
                     if (level_requested == 1) {
                         table_to_read = proc->pageTables;
                     } else {
-                        // Si es un nivel > 1, la tabla a leer es la que nos pasó la CPU en la petición anterior.
                         table_to_read = (void*)(uintptr_t)table_addr_from_cpu;
                     }
 
                     if (table_to_read == NULL) {
                         log_error(memoriaLog, "¡ERROR CRÍTICO! Intento de acceso a tabla de nivel %d para PID %d, pero el puntero es NULO.", level_requested, pid);
                     } else {
-                        // Si no estamos en el último nivel, leemos un puntero.
                         if (level_requested < proc->levels) {
                             void* next_table_ptr = ((void**)table_to_read)[entry_index];
-                            entry_content = (int)(uintptr_t)next_table_ptr;
-                        } else { // Si estamos en el último nivel, leemos un número de marco (int).
-                            entry_content = ((int*)table_to_read)[entry_index];
+                            content_to_send = (uint64_t)(uintptr_t)next_table_ptr;
+                        } else {
+                            content_to_send = (uint64_t)((int*)table_to_read)[entry_index];
                         }
                     }
-                    // --- FIN DE LA LÓGICA DE LECTURA ---
                 }
 
-                log_info(memoriaLog, "PID: %d -> Respuesta de TP [Nivel: %d, Entrada: %d] -> Contenido: %d", pid, level_requested, entry_index, entry_content);
+                log_info(memoriaLog, "PID: %d -> Respuesta de TP [Nivel: %d, Entrada: %d] -> Contenido: %lu", pid, level_requested, entry_index, (unsigned long)content_to_send);
 
                 tPackage* response = createPackage(MEMORIA_TO_CPU_PAGE_TABLE_ENTRY);
-                addToPackage(response, &entry_content, sizeof(int));
+                addToPackage(response, &content_to_send, sizeof(uint64_t)); // Enviamos como uint64_t
                 sendPackage(response, connectionSocket);
                 
                 break;
@@ -354,15 +289,6 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
             package = NULL;
         }
 
-
-
-        // destroyPackage(package);
-        // package = NULL;
-
-        // if (list) {
-        //     list_destroy_and_destroy_elements(list, free);
-        //     list = NULL;
-        // }
     }
 
     if (package)
@@ -604,29 +530,26 @@ char* read_file(const char* path) {
 }
 
 
+
+
+
+
 t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFileName) {
-    // Parámetros de configuración
     int pageSize = getMemoriaConfig()->TAM_PAGINA;
     int entriesPerTable = getMemoriaConfig()->ENTRADAS_POR_TABLA;
     int levels = getMemoriaConfig()->CANTIDAD_NIVELES;
+    int pagesNeeded = (sizeBytes > 0) ? (int)ceil((double)sizeBytes / pageSize) : 1;
+    if (sizeBytes == 0) pagesNeeded = 0;
 
-    // Cálculo de páginas necesarias
-    int pagesNeeded = (sizeBytes > 0) ? (int)ceil((double)sizeBytes / pageSize) : 0;
-    if (pagesNeeded == 0 && sizeBytes > 0) pagesNeeded = 1;
-
-    // Contar marcos libres
     int freeCount = 0;
     for (int i = 0; i < (getMemoriaConfig()->TAM_MEMORIA / pageSize); i++) {
-        if (!bitarray_test_bit(frameBitmap, i)) {
-            freeCount++;
-        }
+        if (!bitarray_test_bit(frameBitmap, i)) freeCount++;
     }
     if (freeCount < pagesNeeded) {
         log_error(memoriaLog, "No hay espacio para pid=%d: necesita %d páginas, libres %d", pid, pagesNeeded, freeCount);
         return NULL;
     }
 
-    // Reservar marcos
     int* frames = malloc(sizeof(int) * pagesNeeded);
     int reserved = 0;
     for (int i = 0; i < (getMemoriaConfig()->TAM_MEMORIA / pageSize) && reserved < pagesNeeded; i++) {
@@ -636,7 +559,6 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
         }
     }
 
-    // Crear estructura del proceso
     t_memoriaProcess* proc = calloc(1, sizeof(t_memoriaProcess));
     proc->pid = pid;
     proc->numPages = pagesNeeded;
@@ -644,11 +566,9 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
     proc->entriesPerTable = entriesPerTable;
     proc->frames = frames;
 
-    // --- LÓGICA DE CREACIÓN DE TABLAS CORREGIDA ---
-    // En lugar de un array de tablas, solo guardamos la tabla raíz (Nivel 1)
     if (levels > 0) {
         size_t root_table_size = (levels == 1) ? sizeof(int) : sizeof(void*);
-        proc->pageTables = calloc(entriesPerTable, root_table_size); // pageTables ahora es UN solo puntero
+        proc->pageTables = calloc(entriesPerTable, root_table_size);
     } else {
         proc->pageTables = NULL;
     }
@@ -675,16 +595,14 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
             page_number_logic %= entries_in_lower_levels;
         }
     }
-    // --- FIN DE LA LÓGICA CORREGIDA ---
 
-    // Leer pseudocódigo
     const char* basePath = getMemoriaConfig()->PATH_INSTRUCCIONES;
     char* fullPath = string_from_format("%s%s", basePath, pseudocodeFileName);
     char* fileContent = read_file(fullPath);
     free(fullPath);
 
     if (!fileContent) {
-        // ... (Manejo de error y rollback) ...
+        // ... (Rollback)
         return NULL;
     }
     proc->instructions = string_split(fileContent, "\n");
@@ -697,4 +615,3 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
     log_info(memoriaLog,"PID %d: %d niveles, %d entradas c/u, %d páginas, %d instrucciones",pid, levels, entriesPerTable, pagesNeeded, count);
     return proc;
 }
-

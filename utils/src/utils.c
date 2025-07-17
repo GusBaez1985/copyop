@@ -219,6 +219,12 @@ int extractIntElementFromList(t_list* list, int index){
     return *((int*)list_get(list, index));
 }
 
+
+uint64_t extractUint64ElementFromList(t_list* list, int index){
+    return *((uint64_t*)list_get(list, index));
+}
+
+
 long long milliseconds(){
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);

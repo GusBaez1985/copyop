@@ -1,9 +1,5 @@
 #ifndef MEMORIA_SERVER_H
 #define MEMORIA_SERVER_H
-
-
-
-
 #include <commons/bitarray.h>           // para t_bitarray y bitarray_*
 #include <commons/collections/dictionary.h> // para t_dictionary
 
@@ -22,37 +18,15 @@ void initMemory(void);
 
 
 typedef struct {
-    int pid;                // ID del proceso 
-    int numPages;           // cuántas páginas (marcos) reservó
-    int* frames;                // (solo si mantuvieras el mono-nivel)
-    //  paginación multinivel 
-    int   levels;            // CANTIDAD_NIVELES
-    int   entriesPerTable;   // ENTRADAS_POR_TABLA
-    void** pageTables;       // punteros a cada nivel: array de longitud 'levels'
-    // pseudocódigo 
+    int pid;
+    int numPages;
+    int* frames;
+    int levels;
+    int entriesPerTable;
+    void* pageTables; // CAMBIO CLAVE: Ahora es un único puntero a la tabla de Nivel 1 (la raíz).
     char** instructions;
-    int     instructionCount;
-
-    // … otros campos (métricas, etc.) …
+    int instructionCount;
 } t_memoriaProcess;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFileName);
 

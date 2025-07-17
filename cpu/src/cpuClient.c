@@ -100,6 +100,11 @@ int handshakeFromInterruptToMemoria(int connectionSocket){
     return receivedCode == MEMORIA_OK;
 }
 
+
+
+
+
+/*
 int memory_get_page_table_entry(uint32_t pid, uint32_t table_addr, int level, int entry_index) {
     tPackage* request = createPackage(CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY);
     addToPackage(request, &pid, sizeof(uint32_t));
@@ -119,6 +124,32 @@ int memory_get_page_table_entry(uint32_t pid, uint32_t table_addr, int level, in
     }
 
     int entry_content = extractIntFromPackage(response);
+    destroyPackage(response);
+
+    return entry_content;
+}
+*/
+uint64_t memory_get_page_table_entry(uint32_t pid, uint64_t table_addr, int level, int entry_index) {
+    tPackage* request = createPackage(CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY);
+    addToPackage(request, &pid, sizeof(uint32_t));
+    addToPackage(request, &table_addr, sizeof(uint64_t)); // Enviamos como uint64_t
+    addToPackage(request, &level, sizeof(int));
+    addToPackage(request, &entry_index, sizeof(int));
+
+    sendPackage(request, connectionSocketMemory);
+
+    tPackage* response = receivePackage(connectionSocketMemory);
+
+    if (!response || response->operationCode != MEMORIA_TO_CPU_PAGE_TABLE_ENTRY) {
+        log_error(cpuLog, "Error recibiendo la entrada de la tabla de páginas desde Memoria.");
+        if(response) destroyPackage(response);
+        return -1;
+    }
+
+    t_list* data = packageToList(response);
+    uint64_t entry_content = extractUint64ElementFromList(data, 0); // Usamos la nueva función
+    
+    list_destroy_and_destroy_elements(data, free);
     destroyPackage(response);
 
     return entry_content;

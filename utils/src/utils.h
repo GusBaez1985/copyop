@@ -130,6 +130,8 @@ t_list* packageToList(tPackage* package);
 char* extractStringElementFromList(t_list* list, int index);
 int extractIntElementFromList(t_list* list, int index);
 
+uint64_t extractUint64ElementFromList(t_list* list, int index);
+
 long long milliseconds();
 
 #endif

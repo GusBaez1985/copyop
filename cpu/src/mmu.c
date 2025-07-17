@@ -111,18 +111,6 @@ tMmuStatus mmu_write(uint32_t logicalAddress, uint32_t size, void* buffer_in) {
             size_to_write_in_page = size - bytes_written;
         }
 
-        // ! Avisar
-        // se modifica por el cambio de firma de translate_address que ahora entrega llave en mano DF, no frame
-        
-        // uint32_t frame_number;
-        // // Para escribir, siempre necesitamos la dirección física.
-        // if (translate_address( 1 /* pcb_actual->pid */, page_number, &frame_number) != MMU_OK) {
-        //     return MMU_SEG_FAULT;
-        // }
-
-        // uint32_t physical_address = frame_number * page_size + offset;
-
-        
         // 1. Declaramos la variable para la dirección física.
         uint32_t physical_address;
         
@@ -192,13 +180,49 @@ void mmu_destroy() {
 }
 
 
-// cpu/src/mmu.c
-// Necesitarás incluir math.h para la función pow()
-#include <math.h> 
+tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* physical_address) {
+    uint32_t page_number = floor(logical_address / tamanioPagina);
+    uint32_t offset = logical_address % tamanioPagina;
+    uint32_t frame_number;
 
-// También necesitarás una nueva función en cpuClient.h (la creamos en el siguiente paso)
-#include "cpuClient.h"
+    if (tlb_lookup(pid, page_number, &frame_number)) {
+        *physical_address = frame_number * tamanioPagina + offset;
+        return MMU_OK;
+    }
 
+    log_info(cpuLog, "PID: %u - TLB MISS - Página: %u", pid, page_number);
+
+    uint64_t current_table_addr = 0; // La primera tabla (Nivel 1) no necesita dirección previa
+
+    for (int level = 1; level <= cantidadNiveles; level++) {
+        int divisor = pow(entradasPorTabla, cantidadNiveles - level);
+        int entry_index = (int)floor(page_number / divisor) % entradasPorTabla;
+
+        uint64_t entry_content = memory_get_page_table_entry(pid, current_table_addr, level, entry_index);
+
+        if (entry_content == (uint64_t)-1) { // Comparamos con el código de error correcto
+            log_error(cpuLog, "PID: %u - SEG_FAULT - Página: %u no encontrada en tabla de páginas (nivel %d).", pid, page_number, level);
+            return MMU_SEG_FAULT;
+        }
+
+        if (level == cantidadNiveles) {
+            frame_number = (uint32_t)entry_content;
+        } else {
+            current_table_addr = entry_content;
+        }
+    }
+
+    log_info(cpuLog, "PID: %u - Acceso a Tabla de Páginas - Página: %u -> Marco: %u", pid, page_number, frame_number);
+    
+    tlb_add(pid, page_number, frame_number);
+    
+    *physical_address = frame_number * tamanioPagina + offset;
+
+    return MMU_OK;
+}
+
+
+/*
 tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* physical_address) {
 
     // ! Prueba de escritorio
@@ -262,7 +286,7 @@ tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* p
 
     return MMU_OK;
 }
-
+*/
 
 tMmuStatus fetch_page_from_memory(uint32_t pid, uint32_t page_number, uint32_t frame_number, void** content) {
     uint32_t page_size = tamanioPagina;
