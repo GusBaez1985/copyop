@@ -236,7 +236,7 @@ tMmuStatus translate_address(uint32_t pid, uint32_t logical_address, uint32_t* p
         // Esta es la función que vamos a crear en cpuClient
         int entry_content = memory_get_page_table_entry(pid, current_table_addr, level, entry_index);
 
-        if (entry_content < 0) {
+        if (entry_content == -1) {
             log_error(cpuLog, "PID: %u - SEG_FAULT - Página: %u no encontrada en tabla de páginas (nivel %d).", pid, page_number, level);
             return MMU_SEG_FAULT;
         }
