@@ -126,6 +126,9 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 break;
 
             case CPU_TO_MEMORIA_FETCH_INSTRUCTION: {
+
+                log_info(memoriaLog, "Aplicando retardo de memoria para FETCH_INSTRUCTION...");
+                usleep(getMemoriaConfig()->RETARDO_MEMORIA * 1000);
                 // Extrae el PID y el PC que CPU envió 
                 t_list* data = packageToList(package);
                 int pid = extractIntElementFromList(data, 0);
@@ -151,11 +154,8 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 tPackage* rsp =  createPackage(MEMORIA_TO_CPU_SEND_INSTRUCTION);
                 addToPackage(rsp, inst, strlen(inst) + 1);
                 
-                // --- CORRECCIÓN ---
-                // Se envía el paquete. La función sendPackage se encarga de destruirlo.
                 sendPackage(rsp, connectionSocket);
-                // Se elimina la llamada redundante a destroyPackage(rsp);
-                // --- FIN DE LA CORRECCIÓN ---
+
 
                 free(inst);
                 break;
@@ -163,6 +163,8 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
 
 
             case CPU_TO_MEMORIA_GET_PAGE_TABLE_ENTRY: {
+                log_info(memoriaLog, "Aplicando retardo de memoria para acceso a Tabla de Páginas...");
+                usleep(getMemoriaConfig()->RETARDO_MEMORIA * 1000);
                 list = packageToList(package);
                 int pid = extractIntElementFromList(list, 0);
                 uint64_t table_addr_from_cpu = extractUint64ElementFromList(list, 1); // Usamos la nueva función
@@ -180,6 +182,7 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 if (!proc) {
                     log_error(memoriaLog, "¡ERROR CRÍTICO! PID: %d no encontrado.", pid);
                 } else {
+                    proc->accesos_a_tabla_paginas++;
                     void* table_to_read;
                     if (level_requested == 1) {
                         table_to_read = proc->pageTables;
@@ -210,15 +213,23 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
 
 
             case CPU_TO_MEMORIA_READ: {
+                log_info(memoriaLog, "Aplicando retardo de memoria para LECTURA...");
+                usleep(getMemoriaConfig()->RETARDO_MEMORIA * 1000);
+                
                 t_list* params = packageToList(package);
                 int pid = extractIntElementFromList(params, 0);
                 int physical_address = extractIntElementFromList(params, 1);
                 int size = extractIntElementFromList(params, 2);
                 list_destroy_and_destroy_elements(params, free);
-                
-                // ! Prueba de escritorio
-                log_info(memoriaLog, "PID %d: Leyendo %d bytes de la dirección física %d", pid, size, physical_address);
-                
+
+                // treamos para metricas
+                char* pidKey = string_itoa(pid);
+                t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
+                free(pidKey);
+                if (proc) {
+                    proc->lecturas_en_memoria++;
+                    log_info(memoriaLog, "PID: %d - Métrica de lectura incrementada a: %d", pid, proc->lecturas_en_memoria);
+                }
                 
                 log_info(memoriaLog, "PID: %d - Acción: LEER - Dir. Física: %d - Tamaño: %d", pid, physical_address, size);
 
@@ -236,6 +247,8 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
             }
 
             case CPU_TO_MEMORIA_WRITE: {
+                log_info(memoriaLog, "Aplicando retardo de memoria para ESCRITURA...");
+                usleep(getMemoriaConfig()->RETARDO_MEMORIA * 1000);
                 t_list* params = packageToList(package);
                 int pid = extractIntElementFromList(params, 0);
                 int physical_address = extractIntElementFromList(params, 1); 
@@ -244,8 +257,15 @@ void* serverThreadForCpuDispatch(void* voidPointerConnectionSocket){
                 memcpy(data_to_write, list_get(params, 3), size); 
                 list_destroy_and_destroy_elements(params, free);
 
-                //! Prueba de escritorio
-                log_info(memoriaLog, "PID %d: Escribiendo en la dirección física %d", pid, physical_address);
+                char* pidKey = string_itoa(pid);
+                t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
+                free(pidKey);
+
+                if (proc) {
+                    proc->escrituras_en_memoria++;
+                    log_info(memoriaLog, "PID: %d - Métrica de escritura incrementada a: %d", pid, proc->escrituras_en_memoria);
+                }
+
 
                 log_info(memoriaLog, "PID: %d - Acción: ESCRIBIR - Dir. Física: %d - Tamaño: %d", pid, physical_address, size);
 
@@ -374,6 +394,8 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket){
 
         switch (package->operationCode) {
             case KERNEL_TO_MEMORY_REQUEST_TO_LOAD_PROCESS:
+                log_info(memoriaLog, "Aplicando retardo de memoria para KERNEL_TO_MEMORY_REQUEST_TO_LOAD_PROCESS...");
+                usleep(getMemoriaConfig()->RETARDO_MEMORIA * 1000);
                 // extraigo pid y tamaño del paquete
                 int pid = extractIntElementFromList(list , 0);
                 char* pseudocodeFileName = extractStringElementFromList(list, 1);
@@ -409,19 +431,24 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket){
 
             case KERNEL_TO_MEMORY_REQUEST_TO_REMOVE_PROCESS: {
                 // REMOVE_PROC: extraer pid, liberar marcos y responder OK/FAIL
-                // Extraer el PID
                 int pid = extractIntElementFromList(list, 0);
                 log_info(memoriaLog, "## (%d) - REMOVE_PROC recibido", pid);
-                // ! Prueba de escritorio
-                log_info(memoriaLog, "Kernel pide eliminar al PID %d. Liberando marcos...", pid);
-                // Construir clave para el diccionario
+                
                 char* pidKey = string_itoa(pid);
-
-                // Buscar el proceso en memoria
                 t_memoriaProcess* proc = dictionary_get(activeProcesses, pidKey);
 
                 tPackage* resp;
                 if (proc) {
+                    log_info(memoriaLog,
+                             "## PID: <%d> Proceso Destruido - Métricas Acc.T.Pag: <%d>; Inst. Sol.: <%d>; SWAP IN: <%d>; SWAP OUT: <%d>; Lec.Mem.: <%d>; Esc.Mem. <%d>",
+                             proc->pid,
+                             proc->accesos_a_tabla_paginas,
+                             proc->instructionCount,
+                             proc->subidas_desde_swap,
+                             proc->bajadas_a_swap,
+                             proc->lecturas_en_memoria,
+                             proc->escrituras_en_memoria);
+
                     // Liberar marcos en bitmap
                     for (int i = 0; i < proc->numPages; i++) {
                         bitarray_clean_bit(frameBitmap, proc->frames[i]);
@@ -565,6 +592,14 @@ t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFi
     proc->levels = levels;
     proc->entriesPerTable = entriesPerTable;
     proc->frames = frames;
+    // Inicializar  métricas
+    proc->accesos_a_tabla_paginas = 0;
+    proc->lecturas_en_memoria = 0;
+    proc->escrituras_en_memoria = 0;
+    proc->bajadas_a_swap = 0;
+    proc->subidas_desde_swap = 0;
+
+
 
     if (levels > 0) {
         size_t root_table_size = (levels == 1) ? sizeof(int) : sizeof(void*);

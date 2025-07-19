@@ -15,17 +15,22 @@ void* serverThreadForKernel(void* voidPointerConnectionSocket);
 
 void initMemory(void);
 
-
-
 typedef struct {
     int pid;
     int numPages;
     int* frames;
     int levels;
     int entriesPerTable;
-    void* pageTables; // CAMBIO CLAVE: Ahora es un único puntero a la tabla de Nivel 1 (la raíz).
+    void* pageTables; 
     char** instructions;
     int instructionCount;
+    int accesos_a_tabla_paginas;
+    int lecturas_en_memoria;
+    int escrituras_en_memoria;
+    // metricas para  SWAP
+    int bajadas_a_swap; 
+    int subidas_desde_swap;
+
 } t_memoriaProcess;
 
 t_memoriaProcess* createProcess(int pid, int sizeBytes, const char* pseudocodeFileName);
