@@ -1,7 +1,7 @@
 #include "cpu.h"
 #include "cpuServer.h"
 
-int connectionSocketMemory;
+
 int finishServer;
 
 // Es la función del hilo de CPU Dispatch de recepción de información desde Kernel.
@@ -12,6 +12,8 @@ void *serverDispatchThreadForKernel(void *voidPointerConnectionSocket)
     int connectionSocket = *((int *)voidPointerConnectionSocket);
     free(voidPointerConnectionSocket);
 
+
+    connectionSocketDispatchKernel = connectionSocket;
     tPackage *package = NULL;
     t_list *list = NULL;
 

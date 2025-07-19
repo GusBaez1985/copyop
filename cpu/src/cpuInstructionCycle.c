@@ -174,7 +174,15 @@ void execute(tDecodedInstruction* decodedInstruction) {
         case DUMP_MEMORY:
             break;
         case EXIT_INST:
+        {
+            log_info(cpuLog, "PID: %d - Syscall: EXIT. Notificando al Kernel.", pid_actual);
+            tPackage* package_to_kernel = createPackage(CPU_DISPATCH_TO_KERNEL_EXIT);
+            sendPackage(package_to_kernel, connectionSocketDispatchKernel);
+            // Detenemos el ciclo de instrucción localmente
+            ciclo_de_instruccion_activo = false;
             break;
+        }
+
         default:
             break;
     }

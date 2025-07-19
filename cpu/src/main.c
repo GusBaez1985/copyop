@@ -10,6 +10,11 @@ uint32_t pc_actual;
 bool ciclo_de_instruccion_activo;
 sem_t sem_ciclo_instruccion;
 
+
+int connectionSocketDispatchKernel; // Definición de la variable global para el llamado desde el execute
+int connectionSocketMemory; 
+
+
 int main(int argc, char* argv[]){
 
     // Valida y asigna el número de CPU
@@ -34,7 +39,6 @@ int main(int argc, char* argv[]){
 
     // Inicializamos el semáforo en 0 para que el hilo que haga wait() se bloquee
     sem_init(&sem_ciclo_instruccion, 0, 0); 
-    
     mmu_init();
 
     // Se pide que se ingrese un caracter para que no termine abruptamente, y se destruyen el logger y config:

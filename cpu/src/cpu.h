@@ -34,11 +34,10 @@ extern uint32_t pid_actual;
 extern uint32_t last_read_size;
 
 
-
-
-
 extern uint32_t pc_actual;
 extern bool ciclo_de_instruccion_activo;
 extern sem_t sem_ciclo_instruccion;
+
+extern int connectionSocketDispatchKernel; // Socket para hablar con el dispatch del Kernel desde el execute
 
 #endif
